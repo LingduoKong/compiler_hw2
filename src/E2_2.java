@@ -3,8 +3,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.Stack;
-import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -13,25 +11,31 @@ public class E2_2 {
     private static HashMap<String, MacroStruct> MacroCode;
 
     private static class MacroStruct {
-        String name, arg1, arg2;
-        MacroStruct(String name, String arg1, String arg2) {
+        String name, replacement;
+        MacroStruct(String name, String replacement) {
             this.name = name;
-            this.arg1 = arg1;
-            this.arg2 = arg2;
+            this.replacement = replacement;
         }
     }
 
     public static void main(String[] args) {
         String str = removeComments("foo.c");
-        str = replaceMacroCode(str);
-        String[] strs = Scanner(str);
-        for (String s : strs) {
-            System.out.println(s);
+        String replaceMacro = replaceMacroCode(str);
+        try {
+            PrintWriter writer = new PrintWriter("output.txt", "UTF-8");
+            writer.println("// remove comments");
+            writer.println(str);
+            writer.println("// replace macro code");
+            writer.println(replaceMacro);
+            writer.close();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
-    /*
-    I assume that there are only two arguments of the macro code
+    /**
+    * I assume that there are exactly two arguments of the macro code, whose arguments only contains capital letters
+     *
      */
     public static String replaceMacroCode(String string) {
         MacroCode = new HashMap<>();
@@ -41,80 +45,28 @@ public class E2_2 {
                 Pattern pattern = Pattern.compile("(#define)(\\s+)([a-zA-Z_][a-zA-Z0-9_]*)(\\(([A-Z]+)(\\s*,\\s*)([A-Z]+)\\)\\s+)(..*)");
                 Matcher matcher = pattern.matcher(temp);
                 if (matcher.find()) {
-                    System.out.println(matcher.group(0));
-                    System.out.println(matcher.group(1));
-                    System.out.println(matcher.group(2));
-                    System.out.println(matcher.group(3));
-                    System.out.println(matcher.group(4));
-                    System.out.println(matcher.group(5));
-                    System.out.println(matcher.group(6));
-                    System.out.println(matcher.group(7));
-                    System.out.println(matcher.group(8));
-
+                    MacroStruct macroStruct = new MacroStruct(matcher.group(3), matcher.group(8));
+                    macroStruct.replacement = macroStruct.replacement.replaceAll(matcher.group(5), "X");
+                    macroStruct.replacement = macroStruct.replacement.replaceAll(matcher.group(7), "Y");
+                    String regex = macroStruct.name + "\\s*\\(\\s*" + "(.+)" + "\\s*,\\s*" + "(.+)" + "\\s*\\)";
+                    MacroCode.put(regex, macroStruct);
                 }
-                MacroStruct macroStruct = new MacroStruct(matcher.group(3), matcher.group(5), matcher.group(6));
-                String regex = macroStruct.name + "(" + "\\s*" + macroStruct.arg1 + "\\s*" + macroStruct.arg2 + "\\s*" + ")";
-
-
-                MacroCode.put(regex, macroStruct);
             }
         }
         String result = string.replaceAll("(#define)(\\s+)([a-zA-Z_][a-zA-Z0-9_]*\\(.*\\))(\\s+)(..*)\\n", "");
-        for (String str : MacroCode.keySet()) {
-            MacroStruct macroStruct = MacroCode.get(str);
-
+        for (String s : MacroCode.keySet()) {
+            Pattern pattern = Pattern.compile(s);
+            Matcher matcher = pattern.matcher(result);
+            while (matcher.find()) {
+                MacroStruct macro = MacroCode.get(s);
+                String replacement = macro.replacement.replaceAll("X", matcher.group(1));
+                replacement = replacement.replaceAll("Y", matcher.group(2));
+                String regex = macro.name + "\\s*\\(\\s*" + matcher.group(1) + "\\s*,\\s*" + matcher.group(2) + "\\s*\\)";
+                result = result.replaceAll(regex, replacement);
+            }
         }
         return result;
     }
-
-    public static String[] Scanner(String string) {
-        boolean inQuote = false;
-        Stack<String> stk = new Stack<>();
-        StringTokenizer stringTokenizer = new StringTokenizer(string, "\"'(){},;+-<>=!*/% ", true);
-        while (stringTokenizer.hasMoreTokens()) {
-            String tokens = stringTokenizer.nextToken();
-            if (tokens.equals("\"")) {
-                if (inQuote) {
-                    String str = stk.pop();
-                    str += tokens.trim();
-                    stk.push(str);
-                } else {
-                    stk.push(tokens.trim());
-                }
-                inQuote = !inQuote;
-                continue;
-            }
-            if (inQuote) {
-                String str = stk.pop();
-                str += tokens;
-                stk.push(str);
-            } else {
-                if (stk.empty()) {
-                    if (!Pattern.matches("\\s*", tokens)) {
-                        stk.push(tokens.trim());
-                    }
-                } else if (stk.peek().equals("<") && tokens.equals("<")
-                        || stk.peek().equals(">") && tokens.equals(">")
-                        || stk.peek().equals(">") && tokens.equals("=")
-                        || stk.peek().equals("<") && tokens.equals("=")
-                        || stk.peek().equals("=") && tokens.equals("=")
-                        || stk.peek().equals("!") && tokens.equals("=")
-                        ) {
-                    String str = stk.pop();
-                    str += tokens;
-                    stk.push(str.trim());
-                } else {
-                    if (!Pattern.matches("\\s*", tokens)) {
-                        stk.push(tokens.trim());
-                    }
-                }
-            }
-        }
-        String[] ar = new String[stk.size()];
-        stk.toArray(ar);
-        return ar;
-    }
-
 
     public static String removeComments(String readingFilePath) {
         Path path = Paths.get(readingFilePath);
@@ -127,51 +79,16 @@ public class E2_2 {
             while ((str = reader.readLine()) != null) {
                 sb.append(str + "\n");
             }
-            result = replaceMethod2(sb.toString());
+            result = replaceMethod(sb.toString());
         } catch (IOException e) {
             e.printStackTrace();
         }
         return result;
     }
 
-    public static String replaceMethod1(String str) {
+    public static String replaceMethod(String str) {
         String res = str.replaceAll("(?:/\\*(?:[^*]|(?:\\*+[^*/]))*\\*+/)|(?://.*)", "");
         return res;
     }
 
-    public static String replaceMethod2(String str) {
-        StringBuilder sb = new StringBuilder();
-        Stack<String> stk = new Stack<>();
-        int n = str.length();
-        for (int i = 0; i < n - 1; i++) {
-            if (stk.empty()) {
-                if (str.charAt(i) == '"') {
-                    stk.push("\"");
-                    sb.append(str.charAt(i));
-                } else if (str.charAt(i) == '/' && str.charAt(i + 1) == '*') {
-                    stk.push("/*");
-                    i++;
-                } else if (str.charAt(i) == '/' && str.charAt(i + 1) == '/') {
-                    stk.push("//");
-                } else {
-                    sb.append(str.charAt(i));
-                }
-            } else if (stk.peek().equals("\"")) {
-                if (str.charAt(i) == '"') {
-                    stk.pop();
-                }
-                sb.append(str.charAt(i));
-            } else if (stk.peek().equals("/*")) {
-                if (str.charAt(i) == '*' && str.charAt(i + 1) == '/') {
-                    stk.pop();
-                    i++;
-                }
-            } else if (stk.peek().equals("//")) {
-                if (str.charAt(i) == '\n') {
-                    stk.pop();
-                }
-            }
-        }
-        return sb.toString();
-    }
 }
